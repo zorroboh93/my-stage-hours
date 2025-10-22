@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AttendanceEntry {
   id: string;
@@ -14,7 +15,38 @@ interface AttendanceCalendarProps {
 }
 
 const AttendanceCalendar = ({ entries, theoreticalHoursPerDay }: AttendanceCalendarProps) => {
-  const currentMonth = useMemo(() => new Date(), []);
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    // Inizia dal mese corrente o ottobre 2024 se siamo prima
+    const now = new Date();
+    const stageStart = new Date(2024, 9); // Ottobre 2024
+    return now < stageStart ? stageStart : now;
+  });
+
+  // Limiti del periodo stage
+  const minDate = new Date(2024, 9); // Ottobre 2024
+  const maxDate = new Date(2025, 5); // Giugno 2025
+
+  const canGoPrevious = useMemo(() => {
+    const prevMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1);
+    return prevMonth >= minDate;
+  }, [currentMonth]);
+
+  const canGoNext = useMemo(() => {
+    const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1);
+    return nextMonth <= maxDate;
+  }, [currentMonth]);
+
+  const goToPreviousMonth = () => {
+    if (canGoPrevious) {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+    }
+  };
+
+  const goToNextMonth = () => {
+    if (canGoNext) {
+      setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+    }
+  };
   
   const calendarData = useMemo(() => {
     const year = currentMonth.getFullYear();
@@ -65,10 +97,30 @@ const AttendanceCalendar = ({ entries, theoreticalHoursPerDay }: AttendanceCalen
   return (
     <Card className="shadow-lg">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-5 w-5" />
-          Calendario - {monthName}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Calendario - {monthName}
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={goToPreviousMonth}
+              disabled={!canGoPrevious}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={goToNextMonth}
+              disabled={!canGoNext}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-7 gap-2">

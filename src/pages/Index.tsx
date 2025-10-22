@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Calendar, Clock, TrendingUp, AlertTriangle, Plus, LogOut } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
@@ -27,6 +37,30 @@ const Index = () => {
   const [newDate, setNewDate] = useState("");
   const [newHours, setNewHours] = useState("");
   const [theoreticalHoursPerDay] = useState(8);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmDialogMessage, setConfirmDialogMessage] = useState("");
+  const [pendingEntry, setPendingEntry] = useState<{ date: string; hours: number } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+
+  // Giorni speciali senza ore indicate (festivi, chiusure, ecc.)
+  // Basato sul calendario PDF fornito
+  const specialDays = useMemo(() => new Set([
+    // Novembre 2024
+    "2024-11-01", // Tutti i Santi
+    // Dicembre 2024
+    "2024-12-08", "2024-12-23", "2024-12-24", "2024-12-25", "2024-12-26", "2024-12-27", 
+    "2024-12-28", "2024-12-29", "2024-12-30", "2024-12-31",
+    // Gennaio 2025
+    "2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04", "2025-01-05", "2025-01-06",
+    // Aprile 2025 (Pasqua)
+    "2025-04-17", "2025-04-18", "2025-04-19", "2025-04-20", "2025-04-21", "2025-04-22",
+    "2025-04-23", "2025-04-24", "2025-04-25",
+    // Maggio 2025
+    "2025-05-01", "2025-05-02",
+    // Giugno 2025
+    "2025-06-02",
+  ]), []);
 
   useEffect(() => {
     // Controlla lo stato di autenticazione
@@ -98,21 +132,35 @@ const Index = () => {
     navigate("/auth");
   };
 
+  // Ore totali previste per lo stage (da PDF)
+  const totalStageHours = 495;
+
   const calculateTheoreticalHours = useMemo(() => {
-    if (entries.length === 0) return 0;
-    const firstDate = new Date(Math.min(...entries.map(e => new Date(e.date).getTime())));
+    const stageStartDate = new Date("2024-10-29");
+    const stageEndDate = new Date("2025-06-30");
     const today = new Date();
-    let current = new Date(firstDate);
+    today.setHours(0, 0, 0, 0);
+    
+    const endDate = today < stageEndDate ? today : stageEndDate;
+    
+    if (endDate < stageStartDate) return 0;
+    
+    let current = new Date(stageStartDate);
     let workDays = 0;
 
-    while (current <= today) {
+    while (current <= endDate) {
       const day = current.getDay();
-      if (day !== 0 && day !== 6) workDays++;
+      const dateString = current.toISOString().split("T")[0];
+      
+      // Conta solo giorni lavorativi (lun-ven) non festivi
+      if (day !== 0 && day !== 6 && !specialDays.has(dateString)) {
+        workDays++;
+      }
       current.setDate(current.getDate() + 1);
     }
 
     return workDays * theoreticalHoursPerDay;
-  }, [entries, theoreticalHoursPerDay]);
+  }, [theoreticalHoursPerDay, specialDays]);
 
   const totalActualHours = useMemo(
     () => entries.reduce((sum, entry) => sum + entry.hours, 0),
@@ -120,13 +168,23 @@ const Index = () => {
   );
 
   const threshold = useMemo(() => {
-    if (calculateTheoreticalHours === 0) return 0;
-    return ((1 - totalActualHours / calculateTheoreticalHours) * 100);
-  }, [totalActualHours, calculateTheoreticalHours]);
+    return ((1 - totalActualHours / totalStageHours) * 100);
+  }, [totalActualHours]);
 
   const isCritical = threshold > 25;
 
-  const addEntry = async () => {
+  const needsConfirmation = (dateString: string): boolean => {
+    const date = new Date(dateString);
+    const dayOfWeek = date.getDay();
+    
+    // I venerdì non richiedono conferma
+    if (dayOfWeek === 5) return false;
+    
+    // Giorni speciali richiedono conferma
+    return specialDays.has(dateString);
+  };
+
+  const validateEntry = () => {
     if (!newDate || !newHours) {
       toast({
         title: "Errore",
@@ -167,15 +225,42 @@ const Index = () => {
         description: "Inserisci un numero di ore valido (0-8)",
         variant: "destructive",
       });
+      return false;
+    }
+
+    return true;
+  };
+
+  const addEntry = async () => {
+    if (!validateEntry()) return;
+
+    const hours = Number(newHours);
+
+    // Controlla se serve conferma
+    if (needsConfirmation(newDate)) {
+      const date = new Date(newDate);
+      const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
+      const dayNumber = date.getDate();
+      
+      setConfirmDialogMessage(
+        `Sei sicuro di voler confermare la presenza per ${dayName} ${dayNumber}?`
+      );
+      setPendingEntry({ date: newDate, hours });
+      setShowConfirmDialog(true);
       return;
     }
 
+    // Aggiungi direttamente senza conferma
+    await saveEntry(newDate, hours);
+  };
+
+  const saveEntry = async (date: string, hours: number) => {
     try {
       const { error } = await supabase
         .from("attendance_entries")
         .insert({
           user_id: user!.id,
-          date: newDate,
+          date: date,
           hours: hours,
         });
 
@@ -189,7 +274,7 @@ const Index = () => {
 
       toast({
         title: hours === 0 ? "Assenza registrata" : "Presenza registrata",
-        description: `${hours} ore registrate per il ${new Date(newDate).toLocaleDateString("it-IT")}`,
+        description: `${hours} ore registrate per il ${new Date(date).toLocaleDateString("it-IT")}`,
       });
 
       const hoursInput = document.getElementById("hours") as HTMLInputElement | null;
@@ -203,12 +288,19 @@ const Index = () => {
     }
   };
 
-  const deleteEntry = async (id: string) => {
+  const handleDeleteClick = (id: string) => {
+    setEntryToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!entryToDelete) return;
+
     try {
       const { error } = await supabase
         .from("attendance_entries")
         .delete()
-        .eq("id", id);
+        .eq("id", entryToDelete);
 
       if (error) throw error;
 
@@ -223,7 +315,18 @@ const Index = () => {
         description: "Impossibile eliminare: " + error.message,
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setEntryToDelete(null);
     }
+  };
+
+  const handleConfirmEntry = async () => {
+    if (!pendingEntry) return;
+    
+    setShowConfirmDialog(false);
+    await saveEntry(pendingEntry.date, pendingEntry.hours);
+    setPendingEntry(null);
   };
 
   if (loading) {
@@ -292,8 +395,8 @@ const Index = () => {
               <Calendar className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary">{calculateTheoreticalHours.toFixed(1)}</div>
-              <p className="text-xs text-muted-foreground mt-1">Ore che avresti dovuto fare</p>
+              <div className="text-3xl font-bold text-primary">{totalStageHours}</div>
+              <p className="text-xs text-muted-foreground mt-1">Ore totali previste per lo stage</p>
             </CardContent>
           </Card>
 
@@ -424,7 +527,7 @@ const Index = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => deleteEntry(entry.id)}
+                        onClick={() => handleDeleteClick(entry.id)}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
                         Elimina
@@ -449,8 +552,8 @@ const Index = () => {
                 <div className="flex justify-between text-sm">
                   <span>Completamento</span>
                   <span className="font-medium">
-                    {calculateTheoreticalHours > 0
-                      ? ((totalActualHours / calculateTheoreticalHours) * 100).toFixed(1)
+                    {totalStageHours > 0
+                      ? ((totalActualHours / totalStageHours) * 100).toFixed(1)
                       : 0}
                     %
                   </span>
@@ -465,19 +568,65 @@ const Index = () => {
                     style={{
                       width: `${Math.min(
                         100,
-                        (totalActualHours / calculateTheoreticalHours) * 100
+                        (totalActualHours / totalStageHours) * 100
                       )}%`,
                     }}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {totalActualHours} / {calculateTheoreticalHours} ore completate
+                  {totalActualHours} / {totalStageHours} ore completate
                 </p>
               </div>
             </CardContent>
           </Card>
         )}
       </div>
+
+      {/* Dialog conferma giornata speciale */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma presenza</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDialogMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowConfirmDialog(false);
+              setPendingEntry(null);
+            }}>
+              Annulla
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEntry}>
+              Conferma
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog conferma eliminazione */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma eliminazione</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare questa presenza?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setDeleteDialogOpen(false);
+              setEntryToDelete(null);
+            }}>
+              Annulla
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
