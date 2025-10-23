@@ -45,22 +45,40 @@ const Index = () => {
 
   // Giorni speciali senza ore indicate (festivi, chiusure, ecc.)
   // Basato sul calendario PDF fornito
-  const specialDays = useMemo(() => new Set([
-    // Novembre 2024
-    "2024-11-01", // Tutti i Santi
-    // Dicembre 2024
-    "2024-12-08", "2024-12-23", "2024-12-24", "2024-12-25", "2024-12-26", "2024-12-27", 
-    "2024-12-28", "2024-12-29", "2024-12-30", "2024-12-31",
-    // Gennaio 2025
-    "2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04", "2025-01-05", "2025-01-06",
-    // Aprile 2025 (Pasqua)
-    "2025-04-17", "2025-04-18", "2025-04-19", "2025-04-20", "2025-04-21", "2025-04-22",
-    "2025-04-23", "2025-04-24", "2025-04-25",
-    // Maggio 2025
-    "2025-05-01", "2025-05-02",
-    // Giugno 2025
-    "2025-06-02",
-  ]), []);
+  const specialDays = useMemo(() => {
+    const days = new Set([
+      // Novembre 2024
+      "2024-11-01", // Tutti i Santi
+      // Dicembre 2024
+      "2024-12-08", "2024-12-23", "2024-12-24", "2024-12-25", "2024-12-26", "2024-12-27", 
+      "2024-12-28", "2024-12-29", "2024-12-30", "2024-12-31",
+      // Gennaio 2025
+      "2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04", "2025-01-05", "2025-01-06",
+      // Aprile 2025 (Pasqua)
+      "2025-04-17", "2025-04-18", "2025-04-19", "2025-04-20", "2025-04-21", "2025-04-22",
+      "2025-04-23", "2025-04-24", "2025-04-25",
+      // Maggio 2025
+      "2025-05-01", "2025-05-02",
+      // Giugno 2025
+      "2025-06-02",
+    ]);
+    
+    // Aggiungi tutti i sabati e domeniche del periodo dello stage
+    const start = new Date("2024-10-29");
+    const end = new Date("2025-06-30");
+    let current = new Date(start);
+    
+    while (current <= end) {
+      const day = current.getDay();
+      // Aggiungi sabati (6) e domeniche (0)
+      if (day === 0 || day === 6) {
+        days.add(current.toISOString().split("T")[0]);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return days;
+  }, []);
 
   useEffect(() => {
     // Controlla lo stato di autenticazione
@@ -174,13 +192,15 @@ const Index = () => {
   const isCritical = threshold > 25;
 
   const needsConfirmation = (dateString: string): boolean => {
-    const date = new Date(dateString);
+    // Crea la data senza timezone per evitare offset
+    const [year, month, day] = dateString.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
     const dayOfWeek = date.getDay();
     
-    // I venerdì non richiedono conferma
+    // I venerdì non richiedono MAI conferma (anche se sono festivi o senza ore nel calendario)
     if (dayOfWeek === 5) return false;
     
-    // Giorni speciali richiedono conferma
+    // Giorni speciali (festivi, weekend, etc.) richiedono conferma
     return specialDays.has(dateString);
   };
 
@@ -196,7 +216,10 @@ const Index = () => {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const selectedDate = new Date(newDate);
+    
+    // Crea la data selezionata senza timezone
+    const [year, month, day] = newDate.split("-").map(Number);
+    const selectedDate = new Date(year, month - 1, day);
     selectedDate.setHours(0, 0, 0, 0);
 
     if (selectedDate > today) {
@@ -238,9 +261,11 @@ const Index = () => {
 
     // Controlla se serve conferma
     if (needsConfirmation(newDate)) {
-      const date = new Date(newDate);
+      // Crea la data senza timezone per evitare offset
+      const [year, month, day] = newDate.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
       const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
-      const dayNumber = date.getDate();
+      const dayNumber = day;
       
       setConfirmDialogMessage(
         `Sei sicuro di voler confermare la presenza per ${dayName} ${dayNumber}?`
@@ -274,7 +299,11 @@ const Index = () => {
 
       toast({
         title: hours === 0 ? "Assenza registrata" : "Presenza registrata",
-        description: `${hours} ore registrate per il ${new Date(date).toLocaleDateString("it-IT")}`,
+        description: `${hours} ore registrate per il ${(() => {
+          const [year, month, day] = date.split("-").map(Number);
+          const d = new Date(year, month - 1, day);
+          return d.toLocaleDateString("it-IT");
+        })()}`,
       });
 
       const hoursInput = document.getElementById("hours") as HTMLInputElement | null;
@@ -323,6 +352,10 @@ const Index = () => {
 
   const handleConfirmEntry = async () => {
     if (!pendingEntry) return;
+    
+    const [year, month, day] = pendingEntry.date.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
     
     setShowConfirmDialog(false);
     await saveEntry(pendingEntry.date, pendingEntry.hours);
@@ -502,12 +535,16 @@ const Index = () => {
                         <Calendar className="h-4 w-4 text-primary" />
                         <div>
                           <p className="font-medium">
-                            {new Date(entry.date).toLocaleDateString("it-IT", {
-                              weekday: "short",
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
+                            {(() => {
+                              const [year, month, day] = entry.date.split("-").map(Number);
+                              const date = new Date(year, month - 1, day);
+                              return date.toLocaleDateString("it-IT", {
+                                weekday: "short",
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              });
+                            })()}
                           </p>
                           <p className="text-sm text-muted-foreground flex items-center gap-2">
                             <span
