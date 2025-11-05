@@ -64,15 +64,18 @@ const Index = () => {
     ]);
     
     // Aggiungi tutti i sabati e domeniche del periodo dello stage
-    const start = new Date("2024-10-29");
-    const end = new Date("2025-06-30");
+    const start = new Date(2024, 9, 29); // 29 ottobre 2024
+    const end = new Date(2025, 5, 30); // 30 giugno 2025
     let current = new Date(start);
     
     while (current <= end) {
       const day = current.getDay();
       // Aggiungi sabati (6) e domeniche (0)
       if (day === 0 || day === 6) {
-        days.add(current.toISOString().split("T")[0]);
+        const year = current.getFullYear();
+        const month = String(current.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(current.getDate()).padStart(2, '0');
+        days.add(`${year}-${month}-${dayStr}`);
       }
       current.setDate(current.getDate() + 1);
     }
