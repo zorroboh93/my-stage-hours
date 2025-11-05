@@ -188,16 +188,21 @@ const Index = () => {
     [entries]
   );
 
-  // Conta le assenze effettive (giorni con 0 ore registrate)
-  const absenceDays = useMemo(() => {
-    return entries.filter(entry => entry.hours === 0).length;
+  // Calcola le ore di assenza totali (incluse ore parziali)
+  const totalAbsenceHours = useMemo(() => {
+    return entries.reduce((sum, entry) => {
+      // Se ha lavorato meno di 8 ore, conta le ore mancanti come assenza
+      if (entry.hours < 8) {
+        return sum + (8 - entry.hours);
+      }
+      return sum;
+    }, 0);
   }, [entries]);
 
   const threshold = useMemo(() => {
-    // Calcola la percentuale di assenze rispetto ai giorni lavorativi totali (495h / 8h al giorno)
-    const totalWorkingDays = totalStageHours / theoreticalHoursPerDay; // 495 / 8 = ~61.875 giorni
-    return (absenceDays / totalWorkingDays) * 100;
-  }, [absenceDays, theoreticalHoursPerDay]);
+    // Calcola la percentuale di ore di assenza rispetto al totale ore previste
+    return (totalAbsenceHours / totalStageHours) * 100;
+  }, [totalAbsenceHours]);
 
   const isCritical = threshold > 25;
 
@@ -258,7 +263,17 @@ const Index = () => {
     if (isNaN(hours) || hours < 0 || hours > 8) {
       toast({
         title: "Errore",
-        description: "Inserisci un numero di ore valido (0-8)",
+        description: "Inserisci un numero di ore valido (0-8, incluse mezz'ore come 7.5)",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Controlla che sia multiplo di 0.5
+    if ((hours * 2) % 1 !== 0) {
+      toast({
+        title: "Errore",
+        description: "Inserisci ore intere o mezz'ore (es. 7.5, 4.5)",
         variant: "destructive",
       });
       return false;
@@ -272,9 +287,23 @@ const Index = () => {
 
     const hours = Number(newHours);
 
-    // Controlla se serve conferma
+    // Se ore parziali (< 8 e > 0), chiedi conferma per ore mancanti
+    if (hours > 0 && hours < 8) {
+      const missingHours = 8 - hours;
+      const [year, month, day] = newDate.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
+      const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
+      
+      setConfirmDialogMessage(
+        `Confermi di aver lavorato ${hours} ore ${dayName} ${day}? Le altre ${missingHours} ore saranno conteggiate come assenza.`
+      );
+      setPendingEntry({ date: newDate, hours });
+      setShowConfirmDialog(true);
+      return;
+    }
+
+    // Controlla se serve conferma per giorni speciali
     if (needsConfirmation(newDate)) {
-      // Crea la data senza timezone per evitare offset
       const [year, month, day] = newDate.split("-").map(Number);
       const date = new Date(year, month - 1, day);
       const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
@@ -501,14 +530,14 @@ const Index = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="hours">Ore Lavorate</Label>
+                  <Label htmlFor="hours">Ore Lavorate (puoi inserire mezz'ora, es. 7.5)</Label>
                   <Input
                     id="hours"
                     type="number"
+                    step="0.5"
                     placeholder="8"
                     value={newHours}
                     onChange={(e) => setNewHours(e.target.value)}
-                    step="0.5"
                     min="0"
                     max="8"
                   />
