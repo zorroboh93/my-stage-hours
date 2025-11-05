@@ -40,6 +40,7 @@ const Index = () => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmDialogMessage, setConfirmDialogMessage] = useState("");
   const [pendingEntry, setPendingEntry] = useState<{ date: string; hours: number } | null>(null);
+  const [isPartialHoursConfirm, setIsPartialHoursConfirm] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
 
@@ -295,9 +296,10 @@ const Index = () => {
       const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
       
       setConfirmDialogMessage(
-        `Confermi di aver lavorato ${hours} ore ${dayName} ${day}? Le altre ${missingHours} ore saranno conteggiate come assenza.`
+        `Hai lavorato ${hours} ore ${dayName} ${day}. Le altre ${missingHours} ore saranno conteggiate come assenza. Vuoi procedere?`
       );
       setPendingEntry({ date: newDate, hours });
+      setIsPartialHoursConfirm(true);
       setShowConfirmDialog(true);
       return;
     }
@@ -313,6 +315,7 @@ const Index = () => {
         `Sei sicuro di voler confermare la presenza per ${dayName} ${dayNumber}?`
       );
       setPendingEntry({ date: newDate, hours });
+      setIsPartialHoursConfirm(false);
       setShowConfirmDialog(true);
       return;
     }
@@ -395,13 +398,10 @@ const Index = () => {
   const handleConfirmEntry = async () => {
     if (!pendingEntry) return;
     
-    const [year, month, day] = pendingEntry.date.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    const dayName = date.toLocaleDateString("it-IT", { weekday: "long" });
-    
     setShowConfirmDialog(false);
     await saveEntry(pendingEntry.date, pendingEntry.hours);
     setPendingEntry(null);
+    setIsPartialHoursConfirm(false);
   };
 
   if (loading) {
@@ -661,7 +661,7 @@ const Index = () => {
         )}
       </div>
 
-      {/* Dialog conferma giornata speciale */}
+      {/* Dialog conferma presenza */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -674,11 +674,12 @@ const Index = () => {
             <AlertDialogCancel onClick={() => {
               setShowConfirmDialog(false);
               setPendingEntry(null);
+              setIsPartialHoursConfirm(false);
             }}>
-              Annulla
+              {isPartialHoursConfirm ? "No, non registrare" : "Annulla"}
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmEntry}>
-              Conferma
+              {isPartialHoursConfirm ? "Sì, conta come assenza" : "Conferma"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
