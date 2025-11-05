@@ -68,7 +68,8 @@ const AttendanceCalendar = ({ entries, theoreticalHoursPerDay }: AttendanceCalen
     // Giorni del mese
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
-      const dateString = date.toISOString().split("T")[0];
+      // Crea dateString senza timezone
+      const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const entry = entries.find(e => e.date === dateString);
       const dayOfWeek = date.getDay();
       const isWorkDay = dayOfWeek !== 0 && dayOfWeek !== 6;
