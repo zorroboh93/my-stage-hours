@@ -203,7 +203,10 @@ const Index = () => {
     // I venerdì non richiedono MAI conferma (anche se sono festivi o senza ore nel calendario)
     if (dayOfWeek === 5) return false;
     
-    // Giorni speciali (festivi, weekend, etc.) richiedono conferma
+    // Sabato (6) e domenica (0) richiedono SEMPRE conferma
+    if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+    
+    // Altri giorni speciali (festivi, chiusure) richiedono conferma
     return specialDays.has(dateString);
   };
 
