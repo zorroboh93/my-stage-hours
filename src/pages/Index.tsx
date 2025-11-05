@@ -188,9 +188,16 @@ const Index = () => {
     [entries]
   );
 
+  // Conta le assenze effettive (giorni con 0 ore registrate)
+  const absenceDays = useMemo(() => {
+    return entries.filter(entry => entry.hours === 0).length;
+  }, [entries]);
+
   const threshold = useMemo(() => {
-    return ((1 - totalActualHours / totalStageHours) * 100);
-  }, [totalActualHours]);
+    // Calcola la percentuale di assenze rispetto ai giorni lavorativi totali (495h / 8h al giorno)
+    const totalWorkingDays = totalStageHours / theoreticalHoursPerDay; // 495 / 8 = ~61.875 giorni
+    return (absenceDays / totalWorkingDays) * 100;
+  }, [absenceDays, theoreticalHoursPerDay]);
 
   const isCritical = threshold > 25;
 
